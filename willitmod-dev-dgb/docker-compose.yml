@@ -7,13 +7,17 @@ services:
       APP_HOST: axedgb-app
       APP_PORT: 3000
       # Verify Umbrel auth tokens using the same secret the auth-server uses.
-      # exports.sh ensures JWT_SECRET is populated even in legacy-compat flows.
+      # Umbrel's auth-server signs tokens with JWT_SECRET.
+      # When starting/restarting via Umbrel, exports.sh should populate JWT_SECRET.
       JWT_SECRET: "${JWT_SECRET}"
+    networks:
+      - umbrel_main_network
 
   init:
     image: alpine:3.22.1
     volumes:
       - ${APP_DATA_DIR}/data:/data
+      - ${APP_DATA_DIR}:/appdata
     environment:
       APPS_SUBNET: "${NETWORK_IP}/16"
       RPC_USER: "dgb"
@@ -27,9 +31,17 @@ services:
       DB_USER: "miningcore"
       DB_PASSWORD: "${APP_PASSWORD}"
       DB_NAME: "miningcore"
-      MINDIFF: "1024"
-      STARTDIFF: "1024"
-      MAXDIFF_JSON: "null"
+      # Default VarDiff profile for DGB SHA256: Mixed (protect small miners, still works for larger rigs)
+      # Min / Start / Max
+      SHA256_MINDIFF: "128"
+      SHA256_STARTDIFF: "512"
+      SHA256_MAXDIFF_JSON: "8192"
+
+      # Conservative Scrypt defaults (leave room for low-hashrate miners)
+      # Min / Start / Max
+      SCRYPT_MINDIFF: "1"
+      SCRYPT_STARTDIFF: "1"
+      SCRYPT_MAXDIFF_JSON: "128"
     command:
       - /bin/sh
       - -ec
@@ -38,7 +50,23 @@ services:
 
         apk add --no-cache envsubst curl jq postgresql-client >/dev/null
 
-        mkdir -p /data/node /data/pool/config /data/pool/postgres /data/templates /data/ui/state
+        # Persist Umbrel's JWT secret into ${APP_DATA_DIR}/.env so that SSH restarts
+        # (without Umbrel's exports.sh) don't boot app_proxy with an empty JWT_SECRET.
+        if [ -n "${JWT_SECRET:-}" ]; then
+          envfile="/appdata/.env"
+          tmp="/appdata/.env.tmp"
+          if [ -f "$$envfile" ]; then
+            grep -v '^JWT_SECRET=' "$$envfile" > "$$tmp" || true
+          else
+            : > "$$tmp"
+          fi
+          printf "JWT_SECRET=%s\n" "${JWT_SECRET}" >> "$$tmp"
+          chmod 600 "$$tmp" || true
+          chown 1000:1000 "$$tmp" || true
+          mv "$$tmp" "$$envfile"
+        fi
+
+        mkdir -p /data/node /data/pool/config /data/pool/postgres /data/templates
 
         # Cleanup from older broken installs (a directory with the script name).
         if [ -d /data/templates/init-entrypoint.sh ]; then
@@ -109,7 +137,25 @@ services:
           fi
 
           # Ensure testnet section exists so switching to testnet doesn't end up with 0 peers.
-          if ! grep -q '^\\[test\\][[:space:]]*$' /data/node/digibyte.conf; then
+          conf="/data/node/digibyte.conf"
+
+          # Deduplicate accidental repeated [test] blocks from older versions.
+          # (DigiByte logs each config arg occurrence, so duplicates look like "reindexing" noise on startup.)
+          if [ -f "$$conf" ] && grep -q '^[[]test[]]' "$$conf"; then
+            awk '
+              BEGIN{seen_test=0; drop=0}
+              /^[[][^]]+[]][[:space:]]*$/{
+                if ($0=="[test]") {
+                  if (seen_test==0) { seen_test=1; drop=0; print; next }
+                  drop=1; next
+                }
+                drop=0; print; next
+              }
+              { if (drop==0) print }
+            ' "$$conf" > "$$conf.tmp" && mv "$$conf.tmp" "$$conf"
+          fi
+
+          if [ -f "$$conf" ] && ! grep -q '^[[]test[]]' "$$conf"; then
             echo "[axedgb] Adding [test] section defaults to digibyte.conf"
             {
               printf "\n"
@@ -122,7 +168,7 @@ services:
               printf "addnode=testnet-seed.digibyte.org:12026\n"
               printf "addnode=95.179.160.53:12026\n"
               printf "addnode=51.15.113.125:12026\n"
-            } >> /data/node/digibyte.conf
+            } >> "$$conf"
           fi
         fi
 
@@ -142,6 +188,13 @@ services:
                     (.paymentProcessing = (.paymentProcessing // {"enabled": false}))
                     | (.blockRefreshInterval = ((.blockRefreshInterval // 500) | if . < 2000 then 2000 else . end))
                     | (.ports |= (if type=="object" then with_entries(.value |= (if type=="object" then (.listenAddress="0.0.0.0") else . end)) else . end))
+                    | (if .id=="dgb-sha256-1" then
+                        (.ports |= (if type=="object" then with_entries(.value |= (if type=="object" then
+                          (.varDiff.targetTime = 7)
+                          | (.varDiff.retargetTime = 15)
+                          | (.varDiff.variancePercent = 20)
+                        else . end)) else . end))
+                      else . end)
                     | (.daemons = ((.daemons // []) | (if type=="array" then map(if type=="object" then (.port=$rpcport) else . end) else . end)))
                   else . end
                 ) else . end))
@@ -153,9 +206,9 @@ services:
               base_addr="$(jq -r '.pools[]? | select(.id=="dgb-sha256-1") | .address // empty' /data/pool/config/miningcore.json | head -n 1)"
               base_enabled="true"
               if [ -z "$$base_addr" ]; then base_enabled="false"; fi
-              base_diff="$(jq -r '.pools[]? | select(.id=="dgb-sha256-1") | (.ports|to_entries[0].value.difficulty // 1024)' /data/pool/config/miningcore.json | head -n 1)"
-              base_mindiff="$(jq -r '.pools[]? | select(.id=="dgb-sha256-1") | (.ports|to_entries[0].value.varDiff.minDiff // 1024)' /data/pool/config/miningcore.json | head -n 1)"
-              base_maxdiff_json="$(jq -c '.pools[]? | select(.id=="dgb-sha256-1") | (.ports|to_entries[0].value.varDiff.maxDiff // null)' /data/pool/config/miningcore.json | head -n 1)"
+              base_diff="$${SCRYPT_STARTDIFF:-1}"
+              base_mindiff="$${SCRYPT_MINDIFF:-1}"
+              base_maxdiff_json="$${SCRYPT_MAXDIFF_JSON:-128}"
               daemons_json="$(jq -c '.pools[]? | select(.id=="dgb-sha256-1") | (.daemons // [])' /data/pool/config/miningcore.json | head -n 1)"
               if [ -z "$$daemons_json" ]; then daemons_json='[]'; fi
               if [ -z "$$base_maxdiff_json" ]; then base_maxdiff_json='null'; fi
@@ -193,45 +246,52 @@ services:
                    },
                    "daemons": $$daemons
                  }]
-                  ' /data/pool/config/miningcore.json > "$$tmp2" && mv "$$tmp2" /data/pool/config/miningcore.json
+                 ' /data/pool/config/miningcore.json > "$$tmp2" && mv "$$tmp2" /data/pool/config/miningcore.json
             fi
 
-            # Apply the UI-owned pool settings state (payout + vardiff) on every boot.
-            # This avoids the UI container needing write access to miningcore.json.
-            if [ -f /data/ui/state/pool_settings.json ]; then
-              desired_addr="$$(jq -r '.payoutAddress // empty' /data/ui/state/pool_settings.json 2>/dev/null | head -n 1 | tr -d '\r' || echo '')"
-              desired_mindiff="$$(jq -r '(.mindiff // 1024) | tonumber' /data/ui/state/pool_settings.json 2>/dev/null | head -n 1 | tr -d '\r' || echo 1024)"
-              desired_startdiff="$$(jq -r '(.startdiff // 1024) | tonumber' /data/ui/state/pool_settings.json 2>/dev/null | head -n 1 | tr -d '\r' || echo 1024)"
-              desired_maxdiff="$$(jq -r '(.maxdiff // 0) | tonumber' /data/ui/state/pool_settings.json 2>/dev/null | head -n 1 | tr -d '\r' || echo 0)"
+            # Apply user-saved payout address + varDiff settings (saved by the UI into a state file).
+            # This ensures the payout address applies to BOTH pools (SHA256 + Scrypt) and survives upgrades.
+            settings="/data/ui/state/pool_settings.json"
+            if [ -f "$$settings" ] && jq -e '.' >/dev/null 2>&1 < "$$settings"; then
+              desired_addr="$(jq -r '.payoutAddress // empty' "$$settings" | tr -d ' \t\r\n')"
+              desired_mindiff="$(jq -r '.mindiff // empty' "$$settings" | tr -d ' \t\r\n')"
+              desired_startdiff="$(jq -r '.startdiff // empty' "$$settings" | tr -d ' \t\r\n')"
+              desired_maxdiff="$(jq -r '.maxdiff // empty' "$$settings" | tr -d ' \t\r\n')"
 
-              if [ -n "$$desired_addr" ]; then
+              if ! echo "$$desired_mindiff" | grep -qE '^[0-9]+(\\.[0-9]+)?$$'; then desired_mindiff=""; fi
+              if ! echo "$$desired_startdiff" | grep -qE '^[0-9]+(\\.[0-9]+)?$$'; then desired_startdiff=""; fi
+              if ! echo "$$desired_maxdiff" | grep -qE '^[0-9]+(\\.[0-9]+)?$$'; then desired_maxdiff=""; fi
+
+              # Only accept legacy/base58 payout addresses here. Bech32 (dgb1...) will be rejected by Miningcore.
+              if echo "$$desired_addr" | grep -qE '^[DS][1-9A-HJ-NP-Za-km-z]{25,60}$$'; then
+                echo "[axedgb] Applying payout address + varDiff settings from $$settings"
                 tmp_apply="/data/pool/config/miningcore.json.tmp_apply"
                 jq --arg addr "$$desired_addr" \
-                  --argjson mindiff "$$desired_mindiff" \
-                  --argjson startdiff "$$desired_startdiff" \
-                  --argjson maxdiff "$$desired_maxdiff" '
-                  (.pools |= (if type=="array" then map(
-                    if type=="object" and .id=="dgb-sha256-1" then
-                      (.address=$$addr)
-                      | (.ports = (.ports // {}))
-                      | (.ports["3333"] = ((.ports["3333"] // {})
-                          | (.difficulty=$$startdiff)
-                          | (.varDiff = (.varDiff // {}))
-                          | (.varDiff.minDiff=$$mindiff)
-                          | (.varDiff.maxDiff=(if $$maxdiff==0 then null else $$maxdiff end))
-                        ))
-                    elif type=="object" and .id=="dgb-scrypt-1" then
-                      (.address=$$addr)
-                      | (.ports = (.ports // {}))
-                      | (.ports["3334"] = ((.ports["3334"] // {})
-                          | (.difficulty=$$startdiff)
-                          | (.varDiff = (.varDiff // {}))
-                          | (.varDiff.minDiff=$$mindiff)
-                          | (.varDiff.maxDiff=(if $$maxdiff==0 then null else $$maxdiff end))
-                        ))
-                    else . end
-                  ) else . end))
-                  ' /data/pool/config/miningcore.json > "$$tmp_apply" && mv "$$tmp_apply" /data/pool/config/miningcore.json
+                   --argjson mindiff "$${desired_mindiff:-0}" \
+                   --argjson startdiff "$${desired_startdiff:-0}" \
+                   --argjson maxdiff "$${desired_maxdiff:-0}" \
+                   '
+                   def apply_port(p):
+                     p
+                     | .listenAddress = "0.0.0.0"
+                     | (if ($$startdiff > 0) then .difficulty = $$startdiff else . end)
+                     | (if ($$mindiff > 0) then .varDiff.minDiff = $$mindiff else . end)
+                     | (if ($$maxdiff > 0) then .varDiff.maxDiff = $$maxdiff else .varDiff.maxDiff = null end)
+                     | (.varDiff.targetTime = 7)
+                     | (.varDiff.retargetTime = 15)
+                     | (.varDiff.variancePercent = 20);
+
+                   (.pools |= (if type=="array" then map(
+                     if (.id=="dgb-sha256-1") then
+                       (.enabled = true)
+                       | (.address = $$addr)
+                       | (.ports |= (if type=="object" then with_entries(.value |= (if type=="object" then apply_port(.) else . end)) else . end))
+                     elif (.id=="dgb-scrypt-1") then
+                       (.enabled = true)
+                       | (.address = $$addr)
+                     else . end
+                   ) else . end))
+                   ' /data/pool/config/miningcore.json > "$$tmp_apply" && mv "$$tmp_apply" /data/pool/config/miningcore.json
               fi
             fi
 
@@ -240,7 +300,7 @@ services:
             # - We keep a placeholder address to allow Miningcore to start, but Stratum must not be exposed until the user sets a real payout address.
             #
             # If address is bech32, empty, or placeholder: force placeholder and bind Stratum to localhost.
-            if jq -r '.pools[]?.address // ""' /data/pool/config/miningcore.json | grep -qiE '^(dgb1|)$|^D596YFweJQuHY1BbjazZYmAbt8jJPbKehC$'; then
+            if jq -r '.pools[]? | select(.id=="dgb-sha256-1" or .id=="dgb-scrypt-1") | (.address // "")' /data/pool/config/miningcore.json | grep -qiE '^(dgb1|)$|^D596YFweJQuHY1BbjazZYmAbt8jJPbKehC$'; then
               echo "[axedgb] Payout address not configured (or unsupported); binding Stratum to localhost until a real legacy address is set"
               tmp3="/data/pool/config/miningcore.json.tmp3"
               jq '
@@ -253,15 +313,6 @@ services:
             fi
           fi
         fi
-
-        # Ensure the UI container can update the payout address.
-        # Previous init scripts (and some upgrade paths) could leave this file owned by root.
-        if [ -f /data/pool/config/miningcore.json ]; then
-          chmod 664 /data/pool/config/miningcore.json 2>/dev/null || true
-          chown 1000:1000 /data/pool/config/miningcore.json 2>/dev/null || true
-        fi
-        chown -R 1000:1000 /data/pool/config 2>/dev/null || true
-        chown -R 1000:1000 /data/ui 2>/dev/null || true
 
         # Ensure Miningcore has a coins.json available at runtime.
         # Our Miningcore container expects this file next to the binary; without it, the API can crash on startup.
@@ -430,7 +481,7 @@ services:
       - ${APP_DATA_DIR}/data/pool/config/coins.json:/app/coins.json:ro
 
   app:
-    image: ghcr.io/willitmod/axedgb-app-umbrel-dev:0.8.38
+    image: ghcr.io/willitmod/axedgb-app-umbrel-dev:0.8.71
     user: "1000:1000"
     restart: on-failure
     stop_grace_period: 30s
@@ -439,10 +490,12 @@ services:
       default:
         aliases:
           - axedgb-app
+      umbrel_main_network:
+        aliases:
+          - axedgb-app
     volumes:
       - ${APP_DATA_DIR}/data:/data
     environment:
-      JWT_SECRET: "${APP_PASSWORD}"
       DGB_RPC_HOST: "dgbd"
       DGB_RPC_PORT: "14022"
       DGB_RPC_USER: "dgb"
@@ -457,3 +510,8 @@ services:
       MININGCORE_IMAGE: "ghcr.io/willitmod/axedgb-miningcore:axedgb-0.8.10-r22"
       POSTGRES_IMAGE: "postgres:16-alpine"
       STATIC_DIR: "/app/static"
+
+networks:
+  umbrel_main_network:
+    external: true
+    name: umbrel_main_network
