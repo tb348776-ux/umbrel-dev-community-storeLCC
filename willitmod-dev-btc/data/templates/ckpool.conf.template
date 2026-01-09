@@ -7,8 +7,16 @@
       "notify": true
     }
   ],
+  "auxd": [
+    {
+      "url": "fractald:${FB_RPC_PORT}",
+      "auth": "${FB_RPC_USER}",
+      "pass": "${FB_RPC_PASSWORD}"
+    }
+  ],
+  "auxaddress": "${FB_PAYOUT_ADDRESS}",
   "btcaddress": "${PAYOUT_ADDRESS}",
-  "btcsig": "/mined by WillItMod on Umbrel/",
+  "btcsig": "/AxeBTCF/",
   "mindiff": 128,
   "startdiff": 512,
   "maxdiff": 131072,
