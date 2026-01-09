@@ -6,6 +6,7 @@ Development/test Umbrel app store for WillItMod apps.
 
 - **Bitcoin Cash** (`willitmod-dev-bch`): BCH full node (BCHN) + solo Stratum v1 pool (ckpool) in a single app.
 - **DigiByte** (`willitmod-dev-dgb`): DigiByte Core full node + solo Stratum v1 pool (ckpool) in a single app (experimental).
+- **AxeMIG** (`willitmod-dev-axemig`): data-only blockchain migration tool (experimental).
 
 ## Quick setup (solo mining)
 
