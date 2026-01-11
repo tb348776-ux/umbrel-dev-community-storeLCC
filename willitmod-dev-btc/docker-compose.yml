@@ -14,7 +14,7 @@ services:
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_DATA_DIR}:/appdata
-      - ${APP_DATA_DIR}/data/templates:/data/templates:ro
+      - ${APP_DATA_DIR}/data/templates:/data/templates:rw
     environment:
       APPS_SUBNET: "${NETWORK_IP}/16"
       RPC_USER: "btc"
@@ -53,6 +53,15 @@ services:
 
         mkdir -p /data/node /data/pool/config /data/pool/www/pool /data/pool/www/users
         mkdir -p /data/fractal
+
+        # Updates don't reliably refresh existing installs' template scripts in APP_DATA_DIR.
+        # Patch in safer defaults for Fractal RPC so the UI/healthcheck don't overload it during IBD.
+        if [ -f /data/templates/fractald-entrypoint.sh ]; then
+          sed -i 's/^  echo 16$/  echo 32/' /data/templates/fractald-entrypoint.sh || true
+          sed -i 's/^  echo 256$/  echo 1024/' /data/templates/fractald-entrypoint.sh || true
+          chmod +x /data/templates/fractald-entrypoint.sh || true
+          chown 1000:1000 /data/templates/fractald-entrypoint.sh || true
+        fi
 
         # Umbrel may create settings.yml as root during update/install; ensure it stays writable.
         touch /appdata/settings.yml
