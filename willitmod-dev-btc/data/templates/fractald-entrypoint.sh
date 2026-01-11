@@ -13,9 +13,11 @@ calc_dbcache() {
 
   mem_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
   mem_mb="$((mem_kb / 1024))"
-  dbcache="$((mem_mb / 8))"
-  if [ "${dbcache}" -lt 256 ]; then dbcache=256; fi
-  if [ "${dbcache}" -gt 2048 ]; then dbcache=2048; fi
+  # IBD is extremely disk-IO heavy; using more dbcache helps a lot on typical
+  # Umbrel hardware. Keep it bounded to avoid OOM on low-memory systems.
+  dbcache="$((mem_mb / 4))"
+  if [ "${dbcache}" -lt 512 ]; then dbcache=512; fi
+  if [ "${dbcache}" -gt 4096 ]; then dbcache=4096; fi
   echo "${dbcache}"
 }
 
@@ -91,7 +93,7 @@ try_add_peers() {
   fi
 
   echo "[fractald] Low peer count (${cc}); trying a few onetry peers..."
-  bitcoin-cli -datadir="${DATADIR}" -rpcwait=30 -rpcclienttimeout=60 getnodeaddresses 60 2>/dev/null \
+  bitcoin-cli -datadir="${DATADIR}" -rpcwait=30 -rpcclienttimeout=60 getnodeaddresses 80 2>/dev/null \
     | awk '
         BEGIN { addr=""; port=""; added=0; }
         /"address"[[:space:]]*:/ {
@@ -102,7 +104,8 @@ try_add_peers() {
         /"port"[[:space:]]*:/ {
           gsub(/[",]/,"");
           port=$2;
-          if (addr != "" && port != "" && added < 8) {
+          # Prefer known Fractal mainnet P2P ports. Skip IPv6 (requires [] formatting).
+          if (addr != "" && port != "" && added < 12 && addr !~ /:/ && (port == 8333 || port == 10333)) {
             print addr ":" port;
             added++;
           }
