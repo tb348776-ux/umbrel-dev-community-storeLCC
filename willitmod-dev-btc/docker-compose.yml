@@ -165,7 +165,7 @@ services:
       - ${APP_DATA_DIR}/data/templates/fractald-entrypoint.sh:/fractald-entrypoint.sh:ro
     entrypoint: ["/bin/sh", "/fractald-entrypoint.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "bitcoin-cli -datadir=/data getblockchaininfo >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "bitcoin-cli -datadir=/data -rpcwait=30 -rpcclienttimeout=120 getblockchaininfo >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 20
@@ -233,8 +233,9 @@ services:
       FRACTAL_IMAGE: "fractalbitcoin/fractal:v0.2.9rc2"
       CKPOOL_IMAGE: "ghcr.io/willitmod/docker-ckpool-solo:590fb2a"
       STATIC_DIR: "/app/static"
-      FB_RPC_TIMEOUT_S: "120"
+      FB_RPC_TIMEOUT_S: "15"
       FB_NODE_CACHE_TTL_S: "180"
+      FB_NODE_REFRESH_MIN_INTERVAL_S: "60"
 
 networks:
   umbrel_main_network:
