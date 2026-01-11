@@ -37,7 +37,7 @@ services:
 
         # Persist Umbrel's JWT secret into ${APP_DATA_DIR}/.env so that SSH restarts
         # (without Umbrel's exports.sh) don't boot app_proxy with an empty JWT_SECRET.
-        if [ -n "${JWT_SECRET:-}" ]; then
+        if [ -n "$${JWT_SECRET:-}" ]; then
           envfile="/appdata/.env"
           tmp="/appdata/.env.tmp"
           if [ -f "$$envfile" ]; then
@@ -45,7 +45,7 @@ services:
           else
             : > "$$tmp"
           fi
-          printf "JWT_SECRET=%s\n" "${JWT_SECRET}" >> "$$tmp"
+          printf "JWT_SECRET=%s\n" "$$JWT_SECRET" >> "$$tmp"
           chmod 600 "$$tmp" || true
           chown 1000:1000 "$$tmp" || true
           mv "$$tmp" "$$envfile"
@@ -109,24 +109,23 @@ services:
             envsubst < /data/templates/fractal.conf.template > /data/fractal/bitcoin.conf
           else
             echo "WARN: missing /data/templates/fractal.conf.template; generating a minimal fractal bitcoin.conf"
-            FB_RPC_PORT="${FB_RPC_PORT:-8332}"
-            FB_RPC_USER="${FB_RPC_USER:-fractal}"
-            FB_RPC_PASSWORD="${FB_RPC_PASSWORD:-changeme}"
-            APPS_SUBNET="${APPS_SUBNET:-10.0.0.0/8}"
+            FB_RPC_PORT="$${FB_RPC_PORT:-8332}"
+            FB_RPC_USER="$${FB_RPC_USER:-fractal}"
+            FB_RPC_PASSWORD="$${FB_RPC_PASSWORD:-changeme}"
+            APPS_SUBNET="$${APPS_SUBNET:-10.0.0.0/8}"
             printf "server=1\ntxindex=0\nprune=30000\nmaxconnections=256\nrpcport=%s\nrpcuser=%s\nrpcpassword=%s\nrpcbind=0.0.0.0\nrpcallowip=127.0.0.1/32\nrpcallowip=%s\nrpcallowip=10.0.0.0/8\nrpcallowip=172.16.0.0/12\nrpcallowip=192.168.0.0/16\n" \
-              "${FB_RPC_PORT}" "${FB_RPC_USER}" "${FB_RPC_PASSWORD}" "${APPS_SUBNET}" \
+              "$$FB_RPC_PORT" "$$FB_RPC_USER" "$$FB_RPC_PASSWORD" "$$APPS_SUBNET" \
               > /data/fractal/bitcoin.conf
           fi
           chown -R 1000:1000 /data/fractal
         fi
         # Keep existing installs up to date with the latest template (bootstrap peers, etc).
         if [ -f /data/templates/fractal.conf.template ]; then
-          tmp="/tmp/fractal.conf.$$"
-          envsubst < /data/templates/fractal.conf.template > "${tmp}"
+          envsubst < /data/templates/fractal.conf.template > /tmp/fractal.conf.tmp
           if [ -f /data/fractal/bitcoin.conf ]; then
-            mv /data/fractal/bitcoin.conf "/data/fractal/bitcoin.conf.bak.$(date +%s 2>/dev/null || echo 0)" || true
+            mv /data/fractal/bitcoin.conf /data/fractal/bitcoin.conf.bak || true
           fi
-          mv "${tmp}" /data/fractal/bitcoin.conf
+          mv /tmp/fractal.conf.tmp /data/fractal/bitcoin.conf
           chown -R 1000:1000 /data/fractal
         fi
         if [ ! -f /data/fractal/sync_enabled ]; then

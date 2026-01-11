@@ -7,7 +7,7 @@ prune=30000
 # Allow more peers (helps initial sync + network robustness).
 maxconnections=256
 # Encourage outbound connections in IBD.
-maxoutconnections=64
+maxoutboundconnections=64
 
 # Stable outbound peers (bootstrap). This helps prevent stalls when DNS seeds
 # are slow/unreliable or when addrman is sparse after restart.
@@ -22,6 +22,17 @@ addnode=18.198.95.247:8333
 addnode=18.144.169.92:8333
 addnode=52.76.241.19:8333
 addnode=173.212.223.9:8333
+addnode=162.62.117.245:8333
+addnode=43.198.101.36:8333
+addnode=119.136.132.179:8333
+addnode=8.218.231.1:8333
+addnode=54.233.133.106:8333
+addnode=54.255.81.204:8333
+addnode=47.239.86.43:8333
+addnode=150.5.169.165:8333
+addnode=161.8.112.126:8333
+addnode=162.55.88.217:10333
+addnode=51.79.163.151:10333
 
 # Mainnet only (Fractal Bitcoin).
 
