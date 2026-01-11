@@ -156,6 +156,7 @@ services:
     image: fractalbitcoin/fractal:v0.2.9rc2
     user: "1000:1000"
     restart: unless-stopped
+    stop_grace_period: 15m30s
     depends_on:
       init:
         condition: service_completed_successfully
