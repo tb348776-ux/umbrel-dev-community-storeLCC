@@ -232,8 +232,8 @@ services:
       FRACTAL_IMAGE: "fractalbitcoin/fractal:v0.2.9rc2"
       CKPOOL_IMAGE: "ghcr.io/willitmod/docker-ckpool-solo:590fb2a"
       STATIC_DIR: "/app/static"
-      FB_RPC_TIMEOUT_S: "30"
-      FB_NODE_CACHE_TTL_S: "30"
+      FB_RPC_TIMEOUT_S: "120"
+      FB_NODE_CACHE_TTL_S: "180"
 
 networks:
   umbrel_main_network:
