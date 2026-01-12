@@ -64,45 +64,45 @@ services:
           sed -i 's/dbcache=4096/dbcache=8192/' /data/templates/fractald-entrypoint.sh || true
           # Upgrade: allow overriding Fractal dbcache via a small config file in the datadir.
           if ! grep -q 'dbcache_mb' /data/templates/fractald-entrypoint.sh 2>/dev/null; then
-            python3 - <<'PY' || true
-from pathlib import Path
-
-path = Path("/data/templates/fractald-entrypoint.sh")
-try:
-    text = path.read_text(encoding="utf-8", errors="replace")
-except Exception:
-    raise SystemExit(0)
-
-if "dbcache_mb" in text:
-    raise SystemExit(0)
-
-needle = "  mem_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\""
-idx = text.find(needle)
-if idx < 0:
-    raise SystemExit(0)
-
-d = "$"
-insert = (
-    "  # Optional file override (written by the AxeBTCF UI).\n"
-    f"  dbcache_file=\"{d}{{DATADIR}}/dbcache_mb\"\n"
-    f"  if [ -f \"{d}{{dbcache_file}}\" ]; then\n"
-    f"    dbcache=\"{d}(head -n 1 \\\"{d}{{dbcache_file}}\\\" 2>/dev/null | tr -d '\\r\\n\\t ' || true)\"\n"
-    f"    case \"{d}{{dbcache}}\" in\n"
-    "      '' ) ;;\n"
-    "      *[!0-9]* ) dbcache=\"\" ;;\n"
-    "      * )\n"
-    f"        if [ \"{d}{{dbcache}}\" -gt 0 ] 2>/dev/null; then\n"
-    f"          echo \"{d}{{dbcache}}\"\n"
-    "          return\n"
-    "        fi\n"
-    "        dbcache=\"\"\n"
-    "        ;;\n"
-    "    esac\n"
-    "  fi\n\n"
-)
-
-path.write_text(text[:idx] + insert + text[idx:], encoding="utf-8")
-PY
+        python3 - <<'PY' || true
+        from pathlib import Path
+        
+        path = Path("/data/templates/fractald-entrypoint.sh")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            raise SystemExit(0)
+        
+        if "dbcache_mb" in text:
+            raise SystemExit(0)
+        
+        needle = "  mem_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\""
+        idx = text.find(needle)
+        if idx < 0:
+            raise SystemExit(0)
+        
+        d = "$"
+        insert = (
+            "  # Optional file override (written by the AxeBTCF UI).\n"
+            f"  dbcache_file=\"{d}{{DATADIR}}/dbcache_mb\"\n"
+            f"  if [ -f \"{d}{{dbcache_file}}\" ]; then\n"
+            f"    dbcache=\"{d}(head -n 1 \\\"{d}{{dbcache_file}}\\\" 2>/dev/null | tr -d '\\r\\n\\t ' || true)\"\n"
+            f"    case \"{d}{{dbcache}}\" in\n"
+            "      '' ) ;;\n"
+            "      *[!0-9]* ) dbcache=\"\" ;;\n"
+            "      * )\n"
+            f"        if [ \"{d}{{dbcache}}\" -gt 0 ] 2>/dev/null; then\n"
+            f"          echo \"{d}{{dbcache}}\"\n"
+            "          return\n"
+            "        fi\n"
+            "        dbcache=\"\"\n"
+            "        ;;\n"
+            "    esac\n"
+            "  fi\n\n"
+        )
+        
+        path.write_text(text[:idx] + insert + text[idx:], encoding="utf-8")
+        PY
           fi
           chmod +x /data/templates/fractald-entrypoint.sh || true
           chown 1000:1000 /data/templates/fractald-entrypoint.sh || true
