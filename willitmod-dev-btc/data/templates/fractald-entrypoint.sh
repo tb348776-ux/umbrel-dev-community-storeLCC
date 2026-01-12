@@ -6,19 +6,48 @@ FLAG="${DATADIR}/sync_enabled"
 PID_FILE="/tmp/bitcoind.pid"
 
 calc_dbcache() {
-  dbcache="${FB_DBCACHE_MB:-}"
-  if [ -n "${dbcache}" ]; then
-    echo "${dbcache}"
-    return
+  dbcache="$(printf %s "${FB_DBCACHE_MB:-}" | tr -d '\r\n\t ' || true)"
+  case "${dbcache}" in
+    '' ) ;;
+    *[!0-9]* ) dbcache="" ;;
+    * )
+      if [ "${dbcache}" -gt 0 ] 2>/dev/null; then
+        echo "${dbcache}"
+        return
+      fi
+      dbcache=""
+      ;;
+  esac
+
+  # Optional file override (written by the AxeBTCF UI).
+  dbcache_file="${DATADIR}/dbcache_mb"
+  if [ -f "${dbcache_file}" ]; then
+    dbcache="$(head -n 1 "${dbcache_file}" 2>/dev/null | tr -d '\r\n\t ' || true)"
+    case "${dbcache}" in
+      '' ) ;;
+      *[!0-9]* ) dbcache="" ;;
+      * )
+        if [ "${dbcache}" -gt 0 ] 2>/dev/null; then
+          echo "${dbcache}"
+          return
+        fi
+        dbcache=""
+        ;;
+    esac
   fi
 
   mem_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
   mem_mb="$((mem_kb / 1024))"
   # IBD is extremely disk-IO heavy; using more dbcache helps a lot on typical
-  # Umbrel hardware. Keep it bounded to avoid OOM on low-memory systems.
-  dbcache="$((mem_mb / 4))"
+  # Umbrel hardware. Default to 8GB on >=16GB systems; keep it bounded to avoid
+  # OOM on low-memory systems.
+  if [ "${mem_mb}" -ge 16384 ] 2>/dev/null; then
+    dbcache=8192
+  else
+    dbcache="$((mem_mb / 4))"
+  fi
   if [ "${dbcache}" -lt 512 ]; then dbcache=512; fi
-  if [ "${dbcache}" -gt 4096 ]; then dbcache=4096; fi
+  if [ "${dbcache}" -gt 8192 ]; then dbcache=8192; fi
   echo "${dbcache}"
 }
 
