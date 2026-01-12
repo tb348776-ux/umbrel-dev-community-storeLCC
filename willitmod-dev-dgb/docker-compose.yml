@@ -574,9 +574,34 @@ services:
           psql -v ON_ERROR_STOP=1 -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -c "CREATE INDEX IF NOT EXISTS IX_minerstats_poolid_miner_worker_created ON minerstats(poolid, miner, worker, created);" >/dev/null
         fi
 
-        # Repair older DBs where blocks.poolid was created as an integer (breaks Miningcore /blocks API).
-        poolid_type="$$(psql -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -tA -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='blocks' AND column_name='poolid' LIMIT 1;" 2>/dev/null | tr -d ' \t\r\n' || true)"
-        if [ -n "$$poolid_type" ] && [ "$$poolid_type" != "text" ] && [ "$$poolid_type" != "charactervarying" ] && [ "$$poolid_type" != "character varying" ]; then
+        # Repair older DBs where *poolid* was created as an integer. This breaks Miningcore APIs and the UI
+        # (Postgres error: operator does not exist: integer = text).
+        #
+        # We prefer an in-place type normalization (lossless for numeric IDs) rather than dropping tables.
+        normalize_poolid_to_text() {
+          table="$$1"
+          # Read data_type; normalize spaces/case for comparisons.
+          t="$$(psql -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -tA -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='$$table' AND column_name='poolid' LIMIT 1;" 2>/dev/null || true)"
+          t="$$(echo "$$t" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]' || true)"
+          if [ -z "$$t" ]; then
+            return 0
+          fi
+          if [ "$$t" = "text" ] || [ "$$t" = "charactervarying" ]; then
+            return 0
+          fi
+          echo "[axedgb] Migrating DB: $$table.poolid $$t -> text"
+          psql -v ON_ERROR_STOP=1 -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -c "ALTER TABLE $$table ALTER COLUMN poolid TYPE TEXT USING poolid::text;" >/dev/null
+        }
+
+        for t in shares blocks balances balance_changes miner_settings payments poolstats minerstats; do
+          normalize_poolid_to_text "$$t" || true
+        done
+
+        # Backstop: some very old installs may have a malformed blocks table; if poolid still isn't text,
+        # rebuild only that table.
+        poolid_type="$$(psql -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -tA -c "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='blocks' AND column_name='poolid' LIMIT 1;" 2>/dev/null || true)"
+        poolid_type="$$(echo "$$poolid_type" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]' || true)"
+        if [ -n "$$poolid_type" ] && [ "$$poolid_type" != "text" ] && [ "$$poolid_type" != "charactervarying" ]; then
           echo "[axedgb] Migrating DB: rebuilding blocks table (poolid type=$$poolid_type)"
           psql -v ON_ERROR_STOP=1 -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -c "DROP TABLE IF EXISTS blocks;" >/dev/null
           psql -v ON_ERROR_STOP=1 -h "$$DB_HOST" -p 5432 -U "$$DB_USER" -d "$$DB_NAME" -c "CREATE TABLE blocks (id BIGSERIAL PRIMARY KEY NOT NULL, poolid TEXT NOT NULL, blockheight BIGINT NOT NULL, networkdifficulty DOUBLE PRECISION NOT NULL, status INT NOT NULL, type INT NOT NULL, transactionconfirmationdata TEXT, miner TEXT NOT NULL, worker TEXT, effort DOUBLE PRECISION NOT NULL, rewardamount DOUBLE PRECISION NOT NULL, info TEXT, hash TEXT NOT NULL, created TIMESTAMP NOT NULL);" >/dev/null
@@ -644,7 +669,7 @@ services:
       - ${APP_DATA_DIR}/data/pool/config/coins.json:/app/coins.json:ro
 
   app:
-    image: ghcr.io/willitmod/axedgb-app:0.9.94
+    image: ghcr.io/willitmod/axedgb-app:0.9.95
     user: "1000:1000"
     restart: on-failure
     stop_grace_period: 30s
