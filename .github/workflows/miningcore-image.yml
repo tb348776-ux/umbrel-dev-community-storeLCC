@@ -38,7 +38,8 @@ jobs:
           set -eux
           cd _vendor/miningcore
           git apply ../../willitmod-dev-dgb/images/miningcore/patches/axedgb-best-share.patch
-          git apply ../../willitmod-dev-dgb/images/miningcore/patches/axedgb-postgres-blocks-int-status.patch
+          # Be tolerant of whitespace/line-ending differences between platforms.
+          git apply --ignore-space-change ../../willitmod-dev-dgb/images/miningcore/patches/axedgb-postgres-blocks-int-status.patch
 
       - uses: docker/setup-qemu-action@v3
 
