@@ -14,7 +14,6 @@ services:
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_DATA_DIR}:/appdata
-      - ./data/templates:/data/templates:ro
     environment:
       APPS_SUBNET: "${NETWORK_IP}/16"
       RPC_USER: "bsv"
@@ -46,12 +45,57 @@ services:
         mkdir -p /data/node /data/pool/config /data/pool/www/pool /data/pool/www/users
 
         if [ ! -f /data/node/bitcoin.conf ]; then
-          envsubst < /data/templates/bitcoin.conf.template > /data/node/bitcoin.conf
+          cat > /tmp/bitcoin.conf.template <<'EOF'
+server=1
+txindex=0
+
+rpcuser=${RPC_USER}
+rpcpassword=${RPC_PASSWORD}
+rpcport=${BSV_RPC_PORT}
+rpcbind=0.0.0.0
+rpcallowip=127.0.0.1/32
+rpcallowip=${APPS_SUBNET}
+rpcallowip=10.0.0.0/8
+rpcallowip=172.16.0.0/12
+rpcallowip=192.168.0.0/16
+
+# Bitcoin SV Node mandatory defaults (safe for solo mining)
+excessiveblocksize=1000000000
+maxstackmemoryusageconsensus=100000000
+
+# Network
+port=${BSV_P2P_PORT}
+listen=1
+upnp=1
+
+# Optional pruning (set by AxeBSV on first run)
+# prune=0
+EOF
+          envsubst < /tmp/bitcoin.conf.template > /data/node/bitcoin.conf
+          rm -f /tmp/bitcoin.conf.template || true
           chown -R 1000:1000 /data/node
         fi
 
         if [ ! -f /data/pool/config/ckpool.conf ]; then
-          envsubst < /data/templates/ckpool.conf.template > /data/pool/config/ckpool.conf
+          cat > /tmp/ckpool.conf.template <<'EOF'
+{
+  "logdir" : "/data",
+  "btcd" : "bsvd",
+  "btcuser" : "${RPC_USER}",
+  "btcpass" : "${RPC_PASSWORD}",
+  "btcport" : ${BSV_RPC_PORT},
+  "btcsig" : "/AxeBSV/",
+  "btcaddress" : "CHANGEME_BSV_PAYOUT_ADDRESS",
+  "webdir" : "/data/pool",
+  "userdir" : "/data/users",
+  "serverurl" : "stratum+tcp://0.0.0.0:3333",
+  "mindiff" : 1,
+  "startdiff" : 1,
+  "maxdiff" : 0
+}
+EOF
+          envsubst < /tmp/ckpool.conf.template > /data/pool/config/ckpool.conf
+          rm -f /tmp/ckpool.conf.template || true
           chown -R 1000:1000 /data/pool
         fi
 
