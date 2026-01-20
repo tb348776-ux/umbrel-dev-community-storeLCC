@@ -60,7 +60,8 @@ services:
           addr="$(jq -r '.payoutAddress // empty' /data/ui/state/pool_settings.json 2>/dev/null || true)"
           if [ -n "$$addr" ] && [ -f /data/pool/config/ckpool.conf ]; then
             tmp="$$(mktemp)"
-            if jq --arg a "$$addr" '.btcaddress=$a' /data/pool/config/ckpool.conf > "$$tmp" 2>/dev/null; then
+            # NOTE: escape `$` for Docker Compose interpolation so jq sees `$a`.
+            if jq --arg a "$$addr" '.btcaddress=$$a' /data/pool/config/ckpool.conf > "$$tmp" 2>/dev/null; then
               mv "$$tmp" /data/pool/config/ckpool.conf
               chown 1000:1000 /data/pool/config/ckpool.conf || true
             else
