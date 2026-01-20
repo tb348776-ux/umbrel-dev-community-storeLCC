@@ -46,32 +46,35 @@ services:
 
         if [ ! -f /data/node/bitcoin.conf ]; then
           cat > /tmp/bitcoin.conf.template <<'EOF'
-server=1
-txindex=0
+        server=1
+        txindex=0
+        
+        rpcuser=${RPC_USER}
+        rpcpassword=${RPC_PASSWORD}
+        rpcport=${BSV_RPC_PORT}
+        rpcbind=0.0.0.0
+        rpcallowip=127.0.0.1/32
+        rpcallowip=${APPS_SUBNET}
+        rpcallowip=10.0.0.0/8
+        rpcallowip=172.16.0.0/12
+        rpcallowip=192.168.0.0/16
+        
+        # Bitcoin SV Node mandatory defaults (safe for solo mining)
+        excessiveblocksize=1000000000
+        maxstackmemoryusageconsensus=100000000
+        minminingtxfee=0.000005
 
-rpcuser=${RPC_USER}
-rpcpassword=${RPC_PASSWORD}
-rpcport=${BSV_RPC_PORT}
-rpcbind=0.0.0.0
-rpcallowip=127.0.0.1/32
-rpcallowip=${APPS_SUBNET}
-rpcallowip=10.0.0.0/8
-rpcallowip=172.16.0.0/12
-rpcallowip=192.168.0.0/16
-
-# Bitcoin SV Node mandatory defaults (safe for solo mining)
-excessiveblocksize=1000000000
-maxstackmemoryusageconsensus=100000000
-minminingtxfee=0.000005
-
-# Network
-port=${BSV_P2P_PORT}
-listen=1
-upnp=1
-
-# Optional pruning (set by AxeBSV on first run)
-# prune=0
-EOF
+        # ZMQ (for ckpool notifications)
+        zmqpubhashblock=tcp://0.0.0.0:28332
+        
+        # Network
+        port=${BSV_P2P_PORT}
+        listen=1
+        upnp=1
+        
+        # Optional pruning (set by AxeBSV on first run)
+        # prune=0
+        EOF
           envsubst < /tmp/bitcoin.conf.template > /data/node/bitcoin.conf
           rm -f /tmp/bitcoin.conf.template || true
           chown -R 1000:1000 /data/node
@@ -79,22 +82,26 @@ EOF
 
         if [ ! -f /data/pool/config/ckpool.conf ]; then
           cat > /tmp/ckpool.conf.template <<'EOF'
-{
-  "logdir" : "/data",
-  "btcd" : "bsvd",
-  "btcuser" : "${RPC_USER}",
-  "btcpass" : "${RPC_PASSWORD}",
-  "btcport" : ${BSV_RPC_PORT},
-  "btcsig" : "/AxeBSV/",
-  "btcaddress" : "CHANGEME_BSV_PAYOUT_ADDRESS",
-  "webdir" : "/data/pool",
-  "userdir" : "/data/users",
-  "serverurl" : "stratum+tcp://0.0.0.0:3333",
-  "mindiff" : 1,
-  "startdiff" : 1,
-  "maxdiff" : 0
-}
-EOF
+        {
+          "btcd": [
+            {
+              "url": "bsvd:${BSV_RPC_PORT}",
+              "auth": "${RPC_USER}",
+              "pass": "${RPC_PASSWORD}",
+              "notify": true
+            }
+          ],
+          "btcaddress": "CHANGEME_BSV_PAYOUT_ADDRESS",
+          "btcsig": "/AxeBSV/",
+          "mindiff": 1,
+          "startdiff": 1,
+          "maxdiff": 0,
+          "logdir": "/www",
+          "webdir": "/www/pool",
+          "userdir": "/www/users",
+          "zmqblock": "tcp://bsvd:28332"
+        }
+        EOF
           envsubst < /tmp/ckpool.conf.template > /data/pool/config/ckpool.conf
           rm -f /tmp/ckpool.conf.template || true
           chown -R 1000:1000 /data/pool
@@ -105,8 +112,7 @@ EOF
           addr="$(jq -r '.payoutAddress // empty' /data/ui/state/pool_settings.json 2>/dev/null || true)"
           if [ -n "$$addr" ] && [ -f /data/pool/config/ckpool.conf ]; then
             tmp="$$(mktemp)"
-            # NOTE: escape `$$` for Docker Compose interpolation so jq sees `$$a`.
-            if jq --arg a "$$addr" '.btcaddress=$$a' /data/pool/config/ckpool.conf > "$$tmp" 2>/dev/null; then
+            if BTCADDRESS="$$addr" jq '.btcaddress = env.BTCADDRESS' /data/pool/config/ckpool.conf > "$$tmp" 2>/dev/null; then
               mv "$$tmp" /data/pool/config/ckpool.conf
               chown 1000:1000 /data/pool/config/ckpool.conf || true
             else
@@ -140,7 +146,7 @@ EOF
       - "8901:3333/tcp"
     volumes:
       - ${APP_DATA_DIR}/data/pool/config/ckpool.conf:/config/ckpool.conf:ro
-      - ${APP_DATA_DIR}/data/pool/www:/data:rw
+      - ${APP_DATA_DIR}/data/pool/www:/www:rw
     entrypoint:
       - /bin/sh
       - -ec
