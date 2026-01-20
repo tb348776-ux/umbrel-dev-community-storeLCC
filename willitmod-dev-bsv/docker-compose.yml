@@ -26,7 +26,7 @@ services:
       - |-
         set -eu
 
-        apk add --no-cache envsubst curl jq >/dev/null
+        apk add --no-cache curl jq >/dev/null
 
         if [ -n "${JWT_SECRET:-}" ]; then
           envfile="/appdata/.env"
@@ -45,16 +45,16 @@ services:
         mkdir -p /data/node /data/pool/config /data/pool/www/pool /data/pool/www/users
 
         if [ ! -f /data/node/bitcoin.conf ]; then
-          cat > /tmp/bitcoin.conf.template <<'EOF'
+          cat > /data/node/bitcoin.conf <<EOF
         server=1
         txindex=0
         
-        rpcuser=${RPC_USER}
-        rpcpassword=${RPC_PASSWORD}
-        rpcport=${BSV_RPC_PORT}
+        rpcuser=$$RPC_USER
+        rpcpassword=$$RPC_PASSWORD
+        rpcport=$$BSV_RPC_PORT
         rpcbind=0.0.0.0
         rpcallowip=127.0.0.1/32
-        rpcallowip=${APPS_SUBNET}
+        rpcallowip=$$APPS_SUBNET
         rpcallowip=10.0.0.0/8
         rpcallowip=172.16.0.0/12
         rpcallowip=192.168.0.0/16
@@ -68,15 +68,13 @@ services:
         zmqpubhashblock=tcp://0.0.0.0:28332
         
         # Network
-        port=${BSV_P2P_PORT}
+        port=$$BSV_P2P_PORT
         listen=1
         upnp=1
         
         # Optional pruning (set by AxeBSV on first run)
         # prune=0
         EOF
-          envsubst < /tmp/bitcoin.conf.template > /data/node/bitcoin.conf
-          rm -f /tmp/bitcoin.conf.template || true
           chown -R 1000:1000 /data/node
         else
           # Ensure mandatory BSV policy settings exist (older installs may be missing these).
@@ -98,13 +96,13 @@ services:
         fi
 
         if [ "$$ckpool_needs_repair" = "1" ]; then
-          cat > /tmp/ckpool.conf.template <<'EOF'
+          cat > /data/pool/config/ckpool.conf <<EOF
         {
           "btcd": [
             {
-              "url": "bsvd:${BSV_RPC_PORT}",
-              "auth": "${RPC_USER}",
-              "pass": "${RPC_PASSWORD}",
+              "url": "bsvd:$$BSV_RPC_PORT",
+              "auth": "$$RPC_USER",
+              "pass": "$$RPC_PASSWORD",
               "notify": true
             }
           ],
@@ -119,8 +117,6 @@ services:
           "zmqblock": "tcp://bsvd:28332"
         }
         EOF
-          envsubst < /tmp/ckpool.conf.template > /data/pool/config/ckpool.conf
-          rm -f /tmp/ckpool.conf.template || true
           chown -R 1000:1000 /data/pool
         fi
 
