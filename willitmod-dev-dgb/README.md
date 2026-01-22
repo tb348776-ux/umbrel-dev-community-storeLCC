@@ -1,37 +1,24 @@
-# Litecoin Cash (LCC) Umbrel Community App Store
+# LCC Solo Mining
 
-Community-maintained Umbrel app store providing **Litecoin Cash (LCC)**
-infrastructure tools, including **solo mining with SHA-256 using ckpool**.
+Run a **Litecoin Cash (LCC) full node** and a **ckpool solo mining server**
+directly on your Umbrel.
 
----
-
-## 📦 Available Apps
-
-### ⛏️ LCC Solo Mining
-- Full Litecoin Cash (LCC) node
-- Integrated ckpool solo mining stratum
-- SHA-256 mining support
-- Mine directly to your own LCC address
+This app allows you to **solo mine Litecoin Cash using SHA-256**
+and receive block rewards **directly to your own LCC wallet address**.
 
 ---
 
-## 🚀 How to Use
+## ⛏️ Mining Details
 
-1. Open your Umbrel dashboard
-2. Go to **Settings → App Stores**
-3. Add this GitHub repository URL
-4. Refresh the App Store
-5. Install **LCC Solo Mining**
-
----
-
-## ⚠️ Disclaimer
-
-These apps are community-driven and not officially supported by Umbrel.
-Use at your own risk.
+- **Coin:** Litecoin Cash (LCC)
+- **Algorithm:** SHA-256
+- **Mining Type:** Solo
+- **Pool Software:** ckpool
+- **Stratum Port:** 3333
 
 ---
 
-## 📜 License
+## 🔗 Miner Connection
 
-MIT
+Point your SHA-256 miner to your Umbrel:
+
