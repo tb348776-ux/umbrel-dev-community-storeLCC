@@ -2,24 +2,25 @@ id: lcc-solo
 name: LCC Solo Mining
 version: "1.0.0"
 category: Mining
-tagline: Litecoin Cash (LCC) solo mining with SHA-256 using ckpool
+tagline: Litecoin Cash (LCC) SHA-256 solo mining
 description: >
-  Run a full Litecoin Cash (LCC) node and a built-in ckpool
-  solo mining stratum on Umbrel. Mine directly to your own
-  LCC wallet using SHA-256 miners.
+  Solo mine Litecoin Cash (LCC) using SHA-256 miners with Miningcore.
+  This app provides a built-in stratum server and live web dashboard,
+  and connects to an external LCC full node for block submission.
 
 developer: Community
 website: https://litecoincash.org
-repo: https://github.com/YOURNAME/umbrel-dev-community-storeLCC
+repo: https://github.com/tb348776-ux/umbrel-dev-community-storeLCC
 
-port: 3333
+# Miningcore Web UI (this is what Umbrel embeds)
+port: 4000
 
 dependencies: []
 
 gallery:
-  - https://raw.githubusercontent.com/YOURNAME/umbrel-dev-community-storeLCC/main/assets/lcc.png
+  - https://raw.githubusercontent.com/tb348776-ux/umbrel-dev-community-storeLCC/main/assets/lcc.png
 
 defaultPassword: ""
 
 releaseNotes: >
-  Initial release. LCC full node + ckpool solo mining support.
+  Initial release. LCC solo mining using Miningcore with live stats and web UI.
