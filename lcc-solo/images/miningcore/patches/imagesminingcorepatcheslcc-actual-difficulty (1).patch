@@ -1,0 +1,3 @@
+# Apply LCC patches
+COPY patches /patches
+RUN git apply /patches/lcc-actual-difficulty.patch
